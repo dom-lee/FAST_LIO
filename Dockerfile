@@ -77,6 +77,8 @@ RUN echo "source ~/FAST_LIO_ws/devel/setup.bash" >> ~/.bashrc
 
 # Create universal ROS entrypoint
 USER root
+RUN apt-get update && apt-get install -y python3-pip && \
+    pip3 install --no-cache-dir scipy
 RUN echo '#!/bin/bash' > /usr/local/bin/ros-entrypoint.sh && \
     echo 'set -e' >> /usr/local/bin/ros-entrypoint.sh && \
     echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /usr/local/bin/ros-entrypoint.sh && \

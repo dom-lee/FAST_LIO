@@ -1,18 +1,19 @@
 ## Setup Instructions
 1. Clone the Repository
 ```bash
-git clone git@github.com:dom-lee/FAST_LIO.git
-git submodule update --init --recursive
+mkdir -p FAST_LIO_ws/src
+cd FAST_LIO_ws/src
+git clone --recurse-submodules git@github.com:dom-lee/FAST_LIO.git
 ```
 
 2. Build the Docker Image
 ```bash
-docker build -t fastlio2 .
+./scripts/build_docker.sh
 ```
 
 3. Run the Docker Container
 ```bash
-./run_docker.sh
+./scripts/run_docker.sh
 ```
 
 3. Build FAST-LIO
@@ -28,3 +29,9 @@ roslaunch fast_lio mapping_ouster64.launch
 ```
 
 ## Record output
+1. Set proper `T_IMU_BASE` in `scripts/odom_logger.py`
+
+2. process FAST_LIO and start odom_logger
+```bash
+./scripts/process_record.sh <bag_dir> <launch_file>
+```

@@ -13,7 +13,6 @@ fi
 BAG_DIR="$(realpath "$1")"
 LAUNCH_FILE="$2"
 OUTPUT_DIR="${3:-/output}"
-ODOM_TOPIC="/Odometry"
 
 # --------- Setup Paths ---------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -52,21 +51,19 @@ for BAGFILE in "$BAG_DIR"/*.bag; do
   sleep 3
 
   # Start odom logger
-  python3 "$ODOM_LOGGER" --output "$CSV_OUTPUT" --odom_topic "$ODOM_TOPIC" &
+  python3 "$ODOM_LOGGER" --output "$CSV_OUTPUT" &
   LOGGER_PID=$!
   sleep 1
 
   # Play the bag
-  DURATION=$(rosbag info "$BAGFILE" | grep "duration" | head -1 | awk '{print $2}')
-  echo "[INFO] Estimated duration: $DURATION"
   stdbuf -oL rosbag play --clock "$BAGFILE"
   sleep 3
 
-  # Clean up
-  kill $LOGGER_PID 2>/dev/null || true
-  kill $LIO_PID 2>/dev/null || true
-  echo "[INFO] Finished processing $BASENAME"
-  echo
+  # Stop processes
+  kill -2 $LOGGER_PID 2>/dev/null || true
+  kill -2 $LIO_PID 2>/dev/null || true
+  sleep 2
+  kill -9 $LOGGER_PID $LIO_PID 2>/dev/null || true
 done
 
 echo "[DONE] All bags processed. Output saved to $OUTPUT_DIR"
