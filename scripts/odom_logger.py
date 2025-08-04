@@ -10,18 +10,18 @@ from nav_msgs.msg import Odometry
 # NOTE: change these transformations based on your setup
 T_IMU_BASE = np.array(
     [
-        0.018171042005886873,
-        -0.9998342729010762,
+        0.01817104200588691,
+        0.9998192272358706,
+        -0.0055969707777272434,
+        0.0016790912333181731,
+        -0.9998342729010758,
+        0.018176980519564845,
+        0.001011983976142187,
+        -0.00030359519284265605,
         0.001113537065796887,
-        0.0,
-        0.9998192272358709,
-        0.0181769805195649,
         0.005577654404657725,
-        0.0,
-        -0.005596970777727245,
-        0.0010119839761421868,
         0.9999838247724537,
-        0.3,
+        -0.2999951474317361,
         0.0,
         0.0,
         0.0,
@@ -29,7 +29,26 @@ T_IMU_BASE = np.array(
     ]
 ).reshape(4, 4)
 
-T_BASE_IMU = np.linalg.inv(T_IMU_BASE)
+T_BASE_LIDAR = np.array(
+    [
+        -1.0,
+        0.0,
+        0.0,
+        0.12,
+        0.0,
+        -1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.35118,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+    ]
+).reshape(4, 4)
 
 
 class OdomCSVLogger:
@@ -39,17 +58,18 @@ class OdomCSVLogger:
         self.writer = None
         rospy.Subscriber("/Odometry", Odometry, self.callback)
         rospy.loginfo("OdomCSVLogger started, saving to %s", output_path)
-        rospy.loginfo("IMU to Base transformation:\n%s", T_IMU_BASE)
+        rospy.loginfo("T^IMU_BASE:\n%s", T_IMU_BASE)
+        rospy.loginfo("T^BASE_LIDAR:\n%s", T_BASE_LIDAR)
 
     def callback(self, msg):
         p = msg.pose.pose.position
         q = msg.pose.pose.orientation
 
-        T_imu = np.eye(4)
-        T_imu[:3, 3] = [p.x, p.y, p.z]
-        T_imu[:3, :3] = R.from_quat([q.x, q.y, q.z, q.w]).as_matrix()
+        T_lidar0_imu = np.eye(4)
+        T_lidar0_imu[:3, 3] = [p.x, p.y, p.z]
+        T_lidar0_imu[:3, :3] = R.from_quat([q.x, q.y, q.z, q.w]).as_matrix()
 
-        pose = T_BASE_IMU @ T_imu @ T_IMU_BASE
+        pose = T_BASE_LIDAR @ T_lidar0_imu @ T_IMU_BASE
         quat = R.from_matrix(pose[:3, :3]).as_quat()
 
         data = {
