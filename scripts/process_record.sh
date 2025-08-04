@@ -1,28 +1,39 @@
 #!/bin/bash
-
 set -e
 
+# --------- Parse Arguments ---------
+if [ "$#" -lt 2 ]; then
+  echo "[USAGE] $0 <bag_dir> <launch_file> [output_dir]"
+  echo "  - bag_dir: Directory containing .bag files"
+  echo "  - launch_file: e.g. 'mapping_ouster64.launch'"
+  echo "  - output_dir: Optional. Defaults to '/output'"
+  exit 1
+fi
+
+BAG_DIR="$(realpath "$1")"
+LAUNCH_FILE="$2"
+OUTPUT_DIR="${3:-/output}"
+ODOM_TOPIC="/Odometry"
+
+# --------- Setup Paths ---------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ODOM_LOGGER="$SCRIPT_DIR/odom_logger.py"
 
-# ----------- Configurable Parameters ------------
-INPUT_DIR="/mnt/ARL_SARA/pickle/03-06-2025"
-OUTPUT_DIR="/output"
-LAUNCH_FILE="fast_lio mapping_sara_pickle.launch"
-ODOM_TOPIC="/Odometry"
-# -----------------------------------------------
+if [ ! -d "$BAG_DIR" ]; then
+  echo "[ERROR] Bag directory not found: $BAG_DIR"
+  exit 1
+fi
 
 mkdir -p "$OUTPUT_DIR/logs"
 
-# Start roscore if not already running
-if ! pgrep -x "roscore" > /dev/null; then
-  echo "[INFO] Starting roscore..."
-  roscore > "$OUTPUT_DIR/roscore.log" 2>&1 &
-  sleep 2
-fi
 
-# Process all bag files
-for BAGFILE in "$INPUT_DIR"/*.bag; do
+# --------- Process Bag Files ---------
+for BAGFILE in "$BAG_DIR"/*.bag; do
+  if [ ! -f "$BAGFILE" ]; then
+    echo "[WARN] No .bag files found in $BAG_DIR"
+    break
+  fi
+
   BASENAME=$(basename "$BAGFILE" .bag)
   CSV_OUTPUT="$OUTPUT_DIR/${BASENAME}_fastlio2.csv"
   FASTLIO_LOG="$OUTPUT_DIR/logs/${BASENAME}_fastlio.log"
@@ -35,17 +46,17 @@ for BAGFILE in "$INPUT_DIR"/*.bag; do
   echo "======================================"
   echo
 
-  # Launch FAST-LIO (log only its output)
-  roslaunch $LAUNCH_FILE > "$FASTLIO_LOG" 2>&1 &
+  # Launch FAST-LIO
+  roslaunch fast_lio $LAUNCH_FILE > "$FASTLIO_LOG" 2>&1 &
   LIO_PID=$!
   sleep 3
 
-  # Start recording user-defined topics
+  # Start odom logger
   python3 "$ODOM_LOGGER" --output "$CSV_OUTPUT" --odom_topic "$ODOM_TOPIC" &
   LOGGER_PID=$!
   sleep 1
 
-  # Play input bag
+  # Play the bag
   DURATION=$(rosbag info "$BAGFILE" | grep "duration" | head -1 | awk '{print $2}')
   echo "[INFO] Estimated duration: $DURATION"
   stdbuf -oL rosbag play --clock "$BAGFILE"
