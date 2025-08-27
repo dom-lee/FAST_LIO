@@ -3,36 +3,54 @@ set -e
 
 # --------- Parse Arguments ---------
 if [ "$#" -lt 2 ]; then
-  echo "[USAGE] $0 <bag_dir> <launch_file> [output_dir]"
-  echo "  - bag_dir: Directory containing .bag files"
+  echo "[USAGE] $0 <launch_file> <bag_file1> [bag_file2] ... [--output <output_dir>] [--config <config_file>]"
   echo "  - launch_file: e.g. 'mapping_ouster64.launch'"
-  echo "  - output_dir: Optional. Defaults to '/output'"
+  echo "  - bag_files: One or more .bag files to process"
+  echo "  - --output: Optional output directory (defaults to 'output/')"
+  echo "  - --config: Optional JSON config file for transformation matrices"
   exit 1
 fi
 
-BAG_DIR="$(realpath "$1")"
-LAUNCH_FILE="$2"
-OUTPUT_DIR="${3:-/output}"
+LAUNCH_FILE="$1"
+OUTPUT_DIR="output"
+CONFIG_FILE=""
+shift 1
+
+# Parse remaining arguments
+BAG_FILES=()
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --output)
+      OUTPUT_DIR="$2"
+      shift 2
+      ;;
+    --config)
+      CONFIG_FILE="$2"
+      shift 2
+      ;;
+    *)
+      BAG_FILES+=("$1")
+      shift
+      ;;
+  esac
+done
 
 # --------- Setup Paths ---------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ODOM_LOGGER="$SCRIPT_DIR/odom_logger.py"
 
-if [ ! -d "$BAG_DIR" ]; then
-  echo "[ERROR] Bag directory not found: $BAG_DIR"
-  exit 1
-fi
-
 mkdir -p "$OUTPUT_DIR/logs"
 
+# --------- Validate Bag Files ---------
+for BAGFILE in "${BAG_FILES[@]}"; do
+  if [ ! -f "$BAGFILE" ]; then
+    echo "[ERROR] Bag file not found: $BAGFILE"
+    exit 1
+  fi
+done
 
 # --------- Process Bag Files ---------
-for BAGFILE in "$BAG_DIR"/*.bag; do
-  if [ ! -f "$BAGFILE" ]; then
-    echo "[WARN] No .bag files found in $BAG_DIR"
-    break
-  fi
-
+for BAGFILE in "${BAG_FILES[@]}"; do
   BASENAME=$(basename "$BAGFILE" .bag)
   CSV_OUTPUT="$OUTPUT_DIR/${BASENAME}_fastlio2.csv"
   FASTLIO_LOG="$OUTPUT_DIR/logs/${BASENAME}_fastlio.log"
@@ -51,7 +69,11 @@ for BAGFILE in "$BAG_DIR"/*.bag; do
   sleep 3
 
   # Start odom logger
-  python3 "$ODOM_LOGGER" --output "$CSV_OUTPUT" &
+  if [ -n "$CONFIG_FILE" ]; then
+    python3 "$ODOM_LOGGER" --output "$CSV_OUTPUT" --config "$CONFIG_FILE" &
+  else
+    python3 "$ODOM_LOGGER" --output "$CSV_OUTPUT" &
+  fi
   LOGGER_PID=$!
   sleep 1
 

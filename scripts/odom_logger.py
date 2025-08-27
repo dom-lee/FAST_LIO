@@ -1,5 +1,6 @@
 import csv
 import argparse
+import json
 
 import numpy as np
 from scipy.spatial.transform import Rotation as R
@@ -7,59 +8,48 @@ from scipy.spatial.transform import Rotation as R
 import rospy
 from nav_msgs.msg import Odometry
 
-# NOTE: change these transformations based on your setup
-T_IMU_BASE = np.array(
-    [
-        0.01817104200588691,
-        0.9998192272358706,
-        -0.0055969707777272434,
-        0.0016790912333181731,
-        -0.9998342729010758,
-        0.018176980519564845,
-        0.001011983976142187,
-        -0.00030359519284265605,
-        0.001113537065796887,
-        0.005577654404657725,
-        0.9999838247724537,
-        -0.2999951474317361,
-        0.0,
-        0.0,
-        0.0,
-        1.0,
-    ]
-).reshape(4, 4)
 
-T_BASE_LIDAR = np.array(
-    [
-        -1.0,
-        0.0,
-        0.0,
-        0.12,
-        0.0,
-        -1.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        1.0,
-        0.35118,
-        0.0,
-        0.0,
-        0.0,
-        1.0,
-    ]
-).reshape(4, 4)
+def load_transform_matrix(config_file, matrix_name):
+    """Load transformation matrix from config file or use default."""
+    try:
+        with open(config_file, "r") as f:
+            config = json.load(f)
+            if matrix_name in config:
+                matrix_data = config[matrix_name]
+                if isinstance(matrix_data, list) and len(matrix_data) == 16:
+                    return np.array(matrix_data).reshape(4, 4)
+                else:
+                    rospy.logwarn(
+                        "Invalid matrix format for %s, using default", matrix_name
+                    )
+            else:
+                rospy.logwarn(
+                    "Matrix %s not found in config, using default", matrix_name
+                )
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        rospy.logwarn("Config file error: %s, using defaults", e)
+
+    return np.eye(4)
 
 
 class OdomCSVLogger:
-    def __init__(self, output_path="odom.csv"):
+    def __init__(self, output_path="odom.csv", tf_config=None):
         self.first_write = True
         self.csv_file = open(output_path, "w", newline="")
         self.writer = None
+
+        # Load transformation matrices
+        self.T_IMU_BASE = np.eye(4)
+        self.T_BASE_LIDAR = np.eye(4)
+
+        if tf_config:
+            self.T_IMU_BASE = load_transform_matrix(tf_config, "T_IMU_BASE")
+            self.T_BASE_LIDAR = load_transform_matrix(tf_config, "T_BASE_LIDAR")
+
         rospy.Subscriber("/Odometry", Odometry, self.callback)
         rospy.loginfo("OdomCSVLogger started, saving to %s", output_path)
-        rospy.loginfo("T^IMU_BASE:\n%s", T_IMU_BASE)
-        rospy.loginfo("T^BASE_LIDAR:\n%s", T_BASE_LIDAR)
+        rospy.loginfo("T^IMU_BASE:\n%s", self.T_IMU_BASE)
+        rospy.loginfo("T^BASE_LIDAR:\n%s", self.T_BASE_LIDAR)
 
     def callback(self, msg):
         p = msg.pose.pose.position
@@ -69,7 +59,7 @@ class OdomCSVLogger:
         T_lidar0_imu[:3, 3] = [p.x, p.y, p.z]
         T_lidar0_imu[:3, :3] = R.from_quat([q.x, q.y, q.z, q.w]).as_matrix()
 
-        pose = T_BASE_LIDAR @ T_lidar0_imu @ T_IMU_BASE
+        pose = self.T_BASE_LIDAR @ T_lidar0_imu @ self.T_IMU_BASE
         quat = R.from_matrix(pose[:3, :3]).as_quat()
 
         data = {
@@ -100,10 +90,17 @@ class OdomCSVLogger:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--output", default="odom.csv", help="Path to output CSV file")
+    parser.add_argument(
+        "--output", type=str, default="odom.csv", help="Path to output CSV file"
+    )
+    parser.add_argument(
+        "--config",
+        type=str,
+        help="Path to JSON config file with transformation matrices",
+    )
     args = parser.parse_args()
 
     rospy.init_node("odom_csv_logger", anonymous=True)
-    logger = OdomCSVLogger(args.output)
+    logger = OdomCSVLogger(args.output, args.config)
     rospy.on_shutdown(logger.shutdown)
     rospy.spin()

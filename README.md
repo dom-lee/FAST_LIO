@@ -29,9 +29,12 @@ roslaunch fast_lio mapping_ouster64.launch
 ```
 
 ## Record output
-1. Set proper `T_IMU_BASE` in `scripts/odom_logger.py`
+1. Set proper `T_IMU_BASE`, `T_BASE_LIDAR` in `scripts/transform_config/*.json`
 
 2. process FAST_LIO and start odom_logger
 ```bash
-./scripts/process_record.sh <bag_dir> <launch_file>
+./scripts/process_record.sh <launch_file> <bag_file1> [bag_file2] ... [--output <output_dir>] [--config <config_file>]"
 ```
+
+## Convert ROS2 bagfile to ROS1 bagfile
+refer: https://gitlab.com/ternaris/rosbags
